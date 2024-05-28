@@ -18,15 +18,17 @@ package main
 
 import (
 	"flag"
+	"os"
+
 	"github.com/elliotchance/pie/v2"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+
 	"github.com/kyma-project/cloud-manager/pkg/config"
 	"github.com/kyma-project/cloud-manager/pkg/feature"
 	awsconfig "github.com/kyma-project/cloud-manager/pkg/kcp/provider/aws/config"
 	azureconfig "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/config"
 	"github.com/kyma-project/cloud-manager/pkg/kcp/scope"
 	"github.com/kyma-project/cloud-manager/pkg/quota"
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
-	"os"
 
 	"github.com/kyma-project/cloud-manager/pkg/common/abstractions"
 	awsiprangeclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/aws/iprange/client"
@@ -214,6 +216,13 @@ func main() {
 		env,
 	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "IpRange")
+		os.Exit(1)
+	}
+	if err = (&cloudcontrolcontroller.RedisInstanceReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RedisInstance")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

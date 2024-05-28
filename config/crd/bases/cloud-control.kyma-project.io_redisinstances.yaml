@@ -1,0 +1,128 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+  name: redisinstances.cloud-control.kyma-project.io
+spec:
+  group: cloud-control.kyma-project.io
+  names:
+    kind: RedisInstance
+    listKind: RedisInstanceList
+    plural: redisinstances
+    singular: redisinstance
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: RedisInstance is the Schema for the redisinstances API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RedisInstanceSpec defines the desired state of RedisInstance
+            properties:
+              instance:
+                maxProperties: 1
+                minProperties: 1
+                properties:
+                  aws:
+                    type: object
+                  azure:
+                    type: object
+                  gcp:
+                    properties:
+                      locationId:
+                        type: string
+                        x-kubernetes-validations:
+                        - message: Location is immutable.
+                          rule: (self == oldSelf)
+                      memorySizeGb:
+                        type: integer
+                        x-kubernetes-validations:
+                        - message: MemorySizeGb is immutable.
+                          rule: (self == oldSelf)
+                      redisVersion:
+                        default: redis_7_0
+                        type: string
+                        x-kubernetes-validations:
+                        - message: RedisVersion is immutable.
+                          rule: (self == oldSelf)
+                      tier:
+                        default: BASIC
+                        type: string
+                        x-kubernetes-validations:
+                        - message: Tier is immutable.
+                          rule: (self == oldSelf)
+                    required:
+                    - locationId
+                    - memorySizeGb
+                    - redisVersion
+                    - tier
+                    type: object
+                type: object
+              ipRange:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              remoteRef:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+                x-kubernetes-validations:
+                - message: RemoteRef is immutable.
+                  rule: (self == oldSelf)
+              scope:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - instance
+            - ipRange
+            - remoteRef
+            - scope
+            type: object
+          status:
+            description: RedisInstanceStatus defines the observed state of RedisInstance
+            properties:
+              authString:
+                type: string
+              id:
+                type: string
+              operationId:
+                description: Operation Identifier to track the Hyperscaler Operation
+                type: string
+              primaryEndpoint:
+                type: string
+              readEndpoint:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

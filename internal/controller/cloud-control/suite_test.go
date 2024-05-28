@@ -18,12 +18,14 @@ package cloudcontrol
 
 import (
 	"context"
+	"os"
+	"testing"
+
+	"go.uber.org/zap/zapcore"
+
 	"github.com/kyma-project/cloud-manager/pkg/common/abstractions"
 	"github.com/kyma-project/cloud-manager/pkg/testinfra"
 	"github.com/kyma-project/cloud-manager/pkg/util"
-	"go.uber.org/zap/zapcore"
-	"os"
-	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
