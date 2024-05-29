@@ -78,6 +78,8 @@ type RedisInstanceAws struct {
 
 // RedisInstanceStatus defines the observed state of RedisInstance
 type RedisInstanceStatus struct {
+	State StatusState `json:"state,omitempty"`
+
 	// +optional
 	Id string `json:"id,omitempty"`
 
@@ -93,9 +95,13 @@ type RedisInstanceStatus struct {
 	// Operation Identifier to track the Hyperscaler Operation
 	// +optional
 	OperationId string `json:"operationId,omitempty"`
-}
 
-/// pkg/kcp/provider/gcp/nfsinstance/state.go - za network name i range
+	// List of status conditions to indicate the status of a RedisInstance.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
@@ -115,6 +121,10 @@ func (in *RedisInstance) ScopeRef() ScopeRef {
 
 func (in *RedisInstance) SetScopeRef(scopeRef ScopeRef) {
 	in.Spec.Scope = scopeRef
+}
+
+func (in *RedisInstance) Conditions() *[]metav1.Condition {
+	return &in.Status.Conditions
 }
 
 func (in *RedisInstance) GetObjectMeta() *metav1.ObjectMeta {
