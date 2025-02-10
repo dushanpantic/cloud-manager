@@ -1,6 +1,8 @@
 package awsnfsvolume
 
 import (
+	"reflect"
+
 	cloudresourcesv1beta1 "github.com/kyma-project/cloud-manager/api/cloud-resources/v1beta1"
 	"github.com/kyma-project/cloud-manager/pkg/util"
 )
@@ -80,4 +82,27 @@ func getVolumeClaimAnnotations(awsVol *cloudresourcesv1beta1.AwsNfsVolume) map[s
 		result[k] = v
 	}
 	return result
+}
+
+func areLabelsEqual(first, second map[string]string) bool {
+	x := first
+	y := second
+
+	if x == nil {
+		x = map[string]string{}
+	}
+	if y == nil {
+		y = map[string]string{}
+	}
+
+	return reflect.DeepEqual(x, y)
+}
+
+func areAnnotationsSuperset(superset, subset map[string]string) bool {
+	for key, value := range subset {
+		if superset[key] != value {
+			return false
+		}
+	}
+	return true
 }

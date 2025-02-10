@@ -1,7 +1,9 @@
 package cloudresources
 
 import (
+	"errors"
 	"fmt"
+
 	"github.com/kyma-project/cloud-manager/api"
 
 	cloudcontrolv1beta1 "github.com/kyma-project/cloud-manager/api/cloud-control/v1beta1"
@@ -717,6 +719,249 @@ var _ = Describe("Feature: SKR AwsNfsVolume", func() {
 				WithArguments(infra.Ctx(), infra.SKR().Client(), skrIpRange).
 				Should(Succeed())
 		})
+	})
+
+	It("Scenario: SKR AwsNfsVolume is modified", func() {
+		skrIpRangeName := "5bced4a4-6b86-42f8-8c72-f7f350f03a65"
+		skrIpRange := &cloudresourcesv1beta1.IpRange{}
+		skrIpRangeId := "09c8dd5f-7cea-427d-a759-3240a673ed2f"
+
+		By("And Given SKR IpRange exists", func() {
+			// tell skriprange reconciler to ignore this SKR IpRange
+			skriprange.Ignore.AddName(skrIpRangeName)
+
+			Eventually(CreateSkrIpRange).
+				WithArguments(
+					infra.Ctx(), infra.SKR().Client(), skrIpRange,
+					WithName(skrIpRangeName),
+				).
+				Should(Succeed())
+		})
+		By("And Given SKR IpRange has Ready condition", func() {
+			Eventually(UpdateStatus).
+				WithArguments(
+					infra.Ctx(), infra.SKR().Client(), skrIpRange,
+					WithSkrIpRangeStatusCidr(skrIpRange.Spec.Cidr),
+					WithSkrIpRangeStatusId(skrIpRangeId),
+					WithConditions(SkrReadyCondition()),
+				).
+				Should(Succeed())
+		})
+
+		awsNfsVolumeName := "d7446c9e-a353-475d-890c-c99abedcff52"
+		awsNfsVolume := &cloudresourcesv1beta1.AwsNfsVolume{}
+		awsNfsVolumeCapacity := "100G"
+
+		const (
+			pvName = "e7b44f23-488c-4f06-846e-007bb0fc1841"
+		)
+		pvLabels := map[string]string{
+			"foo": "1",
+		}
+		pvAnnotations := map[string]string{
+			"bar": "2",
+		}
+
+		const (
+			pvcName = "some-pvc-custom-name33"
+		)
+
+		pvcLabels := map[string]string{
+			"buz": "3",
+		}
+		pvcAnnotations := map[string]string{
+			"qux": "4",
+		}
+
+		By("And Given AwsNfsVolume is created", func() {
+			Eventually(CreateAwsNfsVolume).
+				WithArguments(
+					infra.Ctx(), infra.SKR().Client(), awsNfsVolume,
+					WithName(awsNfsVolumeName),
+					WithIpRange(skrIpRange.Name),
+					WithAwsNfsVolumeCapacity(awsNfsVolumeCapacity),
+					WithAwsNfsVolumePvName(pvName),
+					WithAwsNfsVolumePvLabels(pvLabels),
+					WithAwsNfsVolumePvAnnotations(pvAnnotations),
+					WithAwsNfsVolumePvcName(pvcName),
+					WithAwsNfsVolumePvcLabels(pvcLabels),
+					WithAwsNfsVolumePvcAnnotations(pvcAnnotations),
+				).
+				Should(Succeed())
+		})
+
+		kcpNfsInstance := &cloudcontrolv1beta1.NfsInstance{}
+
+		By("And Given KCP NfsInstance is created", func() {
+			// load SKR AwsNfsVolume to get ID
+			Eventually(LoadAndCheck).
+				WithArguments(
+					infra.Ctx(),
+					infra.SKR().Client(),
+					awsNfsVolume,
+					NewObjActions(),
+					HavingAwsNfsVolumeStatusId(),
+					HavingAwsNfsVolumeStatusState(cloudresourcesv1beta1.StateCreating),
+				).
+				Should(Succeed(), "expected SKR AwsNfsVolume to get status.id")
+
+			Eventually(LoadAndCheck).
+				WithArguments(
+					infra.Ctx(),
+					infra.KCP().Client(),
+					kcpNfsInstance,
+					NewObjActions(
+						WithName(awsNfsVolume.Status.Id),
+					),
+				).
+				Should(Succeed())
+
+			By("And has label cloud-manager.kyma-project.io/kymaName")
+			Expect(kcpNfsInstance.Labels[cloudcontrolv1beta1.LabelKymaName]).To(Equal(infra.SkrKymaRef().Name))
+
+			By("And has label cloud-manager.kyma-project.io/remoteName")
+			Expect(kcpNfsInstance.Labels[cloudcontrolv1beta1.LabelRemoteName]).To(Equal(awsNfsVolume.Name))
+
+			By("And has label cloud-manager.kyma-project.io/remoteNamespace")
+			Expect(kcpNfsInstance.Labels[cloudcontrolv1beta1.LabelRemoteNamespace]).To(Equal(awsNfsVolume.Namespace))
+
+			By("And has spec.scope.name equal to SKR Cluster kyma name")
+			Expect(kcpNfsInstance.Spec.Scope.Name).To(Equal(infra.SkrKymaRef().Name))
+
+			By("And has spec.remoteRef matching to to SKR IpRange")
+			Expect(kcpNfsInstance.Spec.RemoteRef.Namespace).To(Equal(awsNfsVolume.Namespace))
+			Expect(kcpNfsInstance.Spec.RemoteRef.Name).To(Equal(awsNfsVolume.Name))
+
+			By("And has spec.instance.aws equal to SKR AwsNfsVolume.spec values")
+			Expect(string(kcpNfsInstance.Spec.Instance.Aws.Throughput)).To(Equal(string(awsNfsVolume.Spec.Throughput)))
+			Expect(string(kcpNfsInstance.Spec.Instance.Aws.PerformanceMode)).To(Equal(string(awsNfsVolume.Spec.PerformanceMode)))
+
+			By("And has spec.ipRange.name equal to SKR IpRange.status.id")
+			Expect(kcpNfsInstance.Spec.IpRange.Name).To(Equal(skrIpRange.Status.Id))
+		})
+
+		By("And Given KCP NfsInstance has Ready condition", func() {
+			Eventually(UpdateStatus).
+				WithArguments(
+					infra.Ctx(),
+					infra.KCP().Client(),
+					kcpNfsInstance,
+					WithNfsInstanceStatusHost(""),
+					WithConditions(KcpReadyCondition()),
+				).
+				Should(Succeed())
+		})
+
+		By("And Given SKR AwsNfsVolume has Ready condition", func() {
+			Eventually(LoadAndCheck).
+				WithArguments(
+					infra.Ctx(),
+					infra.SKR().Client(),
+					awsNfsVolume,
+					NewObjActions(),
+					HavingConditionTrue(cloudresourcesv1beta1.ConditionTypeReady),
+					HavingAwsNfsVolumeStatusState(cloudresourcesv1beta1.StateReady),
+				).
+				Should(Succeed())
+		})
+
+		pv := &corev1.PersistentVolume{}
+		By("And Given SKR PersistentVolume is created", func() {
+			Eventually(LoadAndCheck).
+				WithArguments(
+					infra.Ctx(),
+					infra.SKR().Client(),
+					pv,
+					NewObjActions(
+						WithName(pvName),
+					),
+				).
+				Should(Succeed())
+
+			By("And it has defined cloud-manager default labels")
+			Expect(pv.Labels[util.WellKnownK8sLabelComponent]).ToNot(BeNil())
+			Expect(pv.Labels[util.WellKnownK8sLabelPartOf]).ToNot(BeNil())
+			Expect(pv.Labels[util.WellKnownK8sLabelManagedBy]).ToNot(BeNil())
+
+			By("And it has user defined custom labels")
+			for k, v := range pvLabels {
+				Expect(pv.Labels).To(HaveKeyWithValue(k, v), fmt.Sprintf("expected PV to have label %s=%s", k, v))
+			}
+			By("And it has user defined custom annotations")
+			for k, v := range pvAnnotations {
+				Expect(pv.Annotations).To(HaveKeyWithValue(k, v), fmt.Sprintf("expected PV to have annotation %s=%s", k, v))
+			}
+
+			By("And it has defined cloud-manager finalizer")
+			Expect(pv.Finalizers).To(ContainElement(api.CommonFinalizerDeletionHook))
+		})
+
+		pvc := &corev1.PersistentVolumeClaim{}
+		By("And Given SKR PersistentVolumeClaim is created", func() {
+			Eventually(LoadAndCheck).
+				WithArguments(
+					infra.Ctx(),
+					infra.SKR().Client(),
+					pvc,
+					NewObjActions(
+						WithName(pvcName),
+						WithNamespace(awsNfsVolume.Namespace),
+					),
+				).
+				Should(Succeed())
+
+			By("And its .spec.volumeName is PV name")
+			Expect(pvc.Spec.VolumeName).To(Equal(pvName))
+
+			By("And it has defined cloud-manager default labels")
+			Expect(pv.Labels[util.WellKnownK8sLabelComponent]).ToNot(BeNil())
+			Expect(pv.Labels[util.WellKnownK8sLabelPartOf]).ToNot(BeNil())
+			Expect(pv.Labels[util.WellKnownK8sLabelManagedBy]).ToNot(BeNil())
+
+			By("And it has defined custom label for capacity")
+			Expect(pvc.Labels[cloudresourcesv1beta1.LabelStorageCapacity]).To(Equal(awsNfsVolumeCapacity))
+
+			By("And it has user defined custom labels")
+			for k, v := range pvcLabels {
+				Expect(pvc.Labels).To(HaveKeyWithValue(k, v), fmt.Sprintf("expected PVC to have label %s=%s", k, v))
+			}
+			By("And it has user defined custom annotations")
+			for k, v := range pvcAnnotations {
+				Expect(pvc.Annotations).To(HaveKeyWithValue(k, v), fmt.Sprintf("expected PVC to have annotation %s=%s", k, v))
+			}
+
+			By("And it has defined cloud-manager finalizer")
+			Expect(pv.Finalizers).To(ContainElement(api.CommonFinalizerDeletionHook))
+		})
+
+		updateAwsNfsVolumeCapacity := "100G"
+		By("When AwsNfsVolume capacity is changed", func() {
+			Eventually(Update).
+				WithArguments(
+					infra.Ctx(), infra.SKR().Client(), awsNfsVolume,
+					WithAwsNfsVolumeCapacity(updateAwsNfsVolumeCapacity),
+				).
+				Should(Succeed())
+		})
+
+		By("And Then PersistentVolumeClaim capacity label is updated", func() {
+			Eventually(func() error {
+				if pvc.Labels[cloudresourcesv1beta1.LabelStorageCapacity] == updateAwsNfsVolumeCapacity {
+					return nil
+				}
+
+				return errors.New(".labels[cloudresourcesv1beta1.LabelStorageCapacity] label is not updated")
+			}).
+				Should(Succeed())
+		})
+
+		// CleanUp
+		Eventually(Delete).
+			WithArguments(infra.Ctx(), infra.SKR().Client(), awsNfsVolume).
+			Should(Succeed())
+		Eventually(Delete).
+			WithArguments(infra.Ctx(), infra.SKR().Client(), skrIpRange).
+			Should(Succeed())
 	})
 
 })

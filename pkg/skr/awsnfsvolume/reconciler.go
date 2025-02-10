@@ -2,6 +2,7 @@ package awsnfsvolume
 
 import (
 	"context"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	cloudresourcesv1beta1 "github.com/kyma-project/cloud-manager/api/cloud-resources/v1beta1"
@@ -65,6 +66,7 @@ func (r *reconciler) newAction() composed.Action {
 		updateStatus,
 		createVolume,
 		createPersistentVolumeClaim,
+		modifyPersistentVolumeClaim,
 		requeueWaitKcpStatus,
 		stopIfNotBeingDeleted,
 
