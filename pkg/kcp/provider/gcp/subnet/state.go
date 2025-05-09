@@ -5,6 +5,7 @@ import (
 
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/networkconnectivity/apiv1/networkconnectivitypb"
+	"github.com/elliotchance/pie/v2"
 	"github.com/kyma-project/cloud-manager/pkg/common/abstractions"
 
 	"github.com/kyma-project/cloud-manager/pkg/common/actions/focal"
@@ -22,6 +23,8 @@ type State struct {
 
 	subnet                  *computepb.Subnetwork
 	serviceConnectionPolicy *networkconnectivitypb.ServiceConnectionPolicy
+
+	updateMask []string
 }
 
 type StateFactory interface {
@@ -76,4 +79,24 @@ func newState(focalState focal.State, computeClient client.ComputeClient, networ
 
 func (s *State) ObjAsGcpSubnet() *cloudcontrolv1beta1.GcpSubnet {
 	return s.Obj().(*cloudcontrolv1beta1.GcpSubnet)
+}
+
+func (s *State) ShouldUpdateConnectionPolicy() bool {
+	return len(s.updateMask) > 0
+}
+
+func (s *State) ConnectionPolicySubnetsContain(subnetName string) bool {
+	return pie.Contains(s.serviceConnectionPolicy.PscConfig.Subnetworks, subnetName)
+}
+
+func (s *State) AddToConnectionPolicySubnets(subnetName string) {
+	s.serviceConnectionPolicy.PscConfig.Subnetworks = append(s.serviceConnectionPolicy.PscConfig.Subnetworks, subnetName)
+	s.updateMask = append(s.updateMask, "psc_config")
+}
+
+func (s *State) RemoveFromConnectionPolicySubnets(subnetName string) {
+	s.serviceConnectionPolicy.PscConfig.Subnetworks = pie.FilterNot(s.serviceConnectionPolicy.PscConfig.Subnetworks, func(name string) bool {
+		return name == subnetName
+	})
+	s.updateMask = append(s.updateMask, "psc_config")
 }
