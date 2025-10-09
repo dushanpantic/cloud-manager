@@ -1,0 +1,10 @@
+apiVersion: cloud-resources.kyma-project.io/v1beta1
+kind: AzureManagedRedisInstance
+metadata:
+  labels:
+    app.kubernetes.io/name: cloud-manager
+    app.kubernetes.io/managed-by: kustomize
+  name: azuremanagedredisinstance-sample
+spec:
+  ipRange:
+    name: default

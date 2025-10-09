@@ -52,6 +52,7 @@ import (
 	azureconfig "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/config"
 	azureexposeddataclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/exposedData/client"
 	azureiprangeclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/iprange/client"
+	azuremanagedredisclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/managedredisinstance/client"
 	azurenetworkclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/network/client"
 	azurenukeclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/nuke/client"
 	azureredisclusterclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/rediscluster/client"
@@ -59,6 +60,7 @@ import (
 	azurevnetlinkdnsresolverclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/vnetlink/dnsresolver/client"
 	azurevnetlinkdnszoneclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/vnetlink/dnszone/client"
 	azurevpcpeeringclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/azure/vpcpeering/client"
+
 	gcpclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/client"
 	gcpexposeddataclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/exposedData/client"
 	gcpiprangeclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/iprange/client"
@@ -451,6 +453,14 @@ func main() {
 		env,
 	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GcpSubnet")
+		os.Exit(1)
+	}
+
+	if err = cloudcontrolcontroller.SetupAzureManagedRedisReconciler(
+		mgr,
+		azuremanagedredisclient.NewClientProvider(),
+	); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AzureManagedRedisInstance")
 		os.Exit(1)
 	}
 

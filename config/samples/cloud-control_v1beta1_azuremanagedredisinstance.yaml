@@ -1,0 +1,21 @@
+apiVersion: cloud-control.kyma-project.io/v1beta1
+kind: AzureManagedRedisInstance
+metadata:
+  labels:
+    app.kubernetes.io/name: cloud-manager
+    app.kubernetes.io/managed-by: kustomize
+  name: azuremanagedredisinstance-sample
+spec:
+  remoteRef:
+    namespace: default
+    name: my-runtime
+  ipRange:
+    name: default
+  scope:
+    name: default
+  sku:
+    capacity: 1
+    family: P
+  redisConfiguration:
+    maxclients: "1000"
+  redisVersion: "7"
