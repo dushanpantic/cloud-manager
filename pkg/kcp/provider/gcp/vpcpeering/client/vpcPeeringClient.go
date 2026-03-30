@@ -18,34 +18,45 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
-	"google.golang.org/api/iterator"
-
-	compute "cloud.google.com/go/compute/apiv1"
 	pb "cloud.google.com/go/compute/apiv1/computepb"
-	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/elliotchance/pie/v2"
 	"github.com/kyma-project/cloud-manager/pkg/composed"
-	"github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/client"
+	gcpclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/client"
 	"k8s.io/utils/ptr"
 )
 
-func NewClientProvider(gcpClients *client.GcpClients) client.GcpClientProvider[VpcPeeringClient] {
+func NewClientProvider(gcpClients *gcpclient.GcpClients) gcpclient.GcpClientProvider[VpcPeeringClient] {
 	return func(_ string) VpcPeeringClient { return NewVpcPeeringClient(gcpClients) }
 }
 
-func NewVpcPeeringClient(gcpClients *client.GcpClients) VpcPeeringClient {
-	return &gcpVpcPeeringClient{networksClient: gcpClients.VpcPeeringClients.ComputeNetworks, resourceManagerTagBindingsClient: gcpClients.VpcPeeringClients.ResourceManagerTagBindings, operationsClient: gcpClients.VpcPeeringClients.ComputeGlobalOperations}
+func NewVpcPeeringClient(gcpClients *gcpclient.GcpClients) VpcPeeringClient {
+	return NewVpcPeeringClientFromWrapped(
+		gcpClients.VpcPeeringClients.NetworkWrapped(),
+		gcpClients.VpcPeeringClients.GlobalOperationsWrapped(),
+		gcpClients.VpcPeeringClients.ResourceManagerWrapped(),
+	)
+}
+
+func NewVpcPeeringClientFromWrapped(
+	networksClient gcpclient.VpcNetworkClient,
+	operationsClient gcpclient.ComputeGlobalOperationsClient,
+	resourceManagerClient gcpclient.ResourceManagerClient,
+) VpcPeeringClient {
+	return &gcpVpcPeeringClient{
+		networksClient:        networksClient,
+		operationsClient:      operationsClient,
+		resourceManagerClient: resourceManagerClient,
+	}
 }
 
 type gcpVpcPeeringClient struct {
-	networksClient                   *compute.NetworksClient
-	operationsClient                 *compute.GlobalOperationsClient
-	resourceManagerTagBindingsClient *resourcemanager.TagBindingsClient
+	networksClient        gcpclient.VpcNetworkClient
+	operationsClient      gcpclient.ComputeGlobalOperationsClient
+	resourceManagerClient gcpclient.ResourceManagerClient
 }
 
 type VpcPeeringClient interface {
@@ -57,7 +68,7 @@ type VpcPeeringClient interface {
 	GetPeeringOperation(context context.Context, project string, operationId string) (*pb.Operation, error)
 }
 
-func CreateVpcPeeringRequest(ctx context.Context, remotePeeringName string, sourceVpc string, sourceProject string, importCustomRoutes bool, exportCustomRoutes bool, destinationProject string, destinationVpc string, networksClient *compute.NetworksClient) (*pb.Operation, error) {
+func createVpcPeeringRequest(ctx context.Context, remotePeeringName string, sourceVpc string, sourceProject string, importCustomRoutes bool, exportCustomRoutes bool, destinationProject string, destinationVpc string, networksClient gcpclient.VpcNetworkClient) (*pb.Operation, error) {
 
 	destinationNetworkUrl := getFullNetworkUrl(destinationProject, destinationVpc)
 
@@ -79,7 +90,8 @@ func CreateVpcPeeringRequest(ctx context.Context, remotePeeringName string, sour
 	if err != nil {
 		return nil, err
 	}
-	return op.Proto(), nil
+	opName := op.Name()
+	return &pb.Operation{Name: &opName}, nil
 
 }
 
@@ -91,7 +103,7 @@ func (c *gcpVpcPeeringClient) CreateRemoteVpcPeering(ctx context.Context, remote
 	if customRoutes {
 		exportCustomRoutes = true
 	}
-	return CreateVpcPeeringRequest(ctx, remotePeeringName, remoteVpc, remoteProject, importCustomRoutes, exportCustomRoutes, kymaProject, kymaVpc, c.networksClient)
+	return createVpcPeeringRequest(ctx, remotePeeringName, remoteVpc, remoteProject, importCustomRoutes, exportCustomRoutes, kymaProject, kymaVpc, c.networksClient)
 }
 
 func (c *gcpVpcPeeringClient) CreateLocalVpcPeering(ctx context.Context, remotePeeringName string, remoteVpc string, remoteProject string, customRoutes bool, kymaProject string, kymaVpc string) (*pb.Operation, error) {
@@ -99,7 +111,7 @@ func (c *gcpVpcPeeringClient) CreateLocalVpcPeering(ctx context.Context, remoteP
 	//Kyma will not export custom routes to the remote vpc, but if the remote vpc is exporting them, we need to import them
 	exportCustomRoutes := false
 	importCustomRoutes := customRoutes
-	return CreateVpcPeeringRequest(ctx, remotePeeringName, kymaVpc, kymaProject, importCustomRoutes, exportCustomRoutes, remoteProject, remoteVpc, c.networksClient)
+	return createVpcPeeringRequest(ctx, remotePeeringName, kymaVpc, kymaProject, importCustomRoutes, exportCustomRoutes, remoteProject, remoteVpc, c.networksClient)
 }
 
 func (c *gcpVpcPeeringClient) DeleteVpcPeering(ctx context.Context, remotePeeringName string, kymaProject string, kymaVpc string) error {
@@ -108,15 +120,12 @@ func (c *gcpVpcPeeringClient) DeleteVpcPeering(ctx context.Context, remotePeerin
 		Project:                              kymaProject,
 		NetworksRemovePeeringRequestResource: &pb.NetworksRemovePeeringRequest{Name: &remotePeeringName},
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (c *gcpVpcPeeringClient) GetVpcPeering(ctx context.Context, remotePeeringName string, project string, vpc string) (*pb.NetworkPeering, error) {
 
-	network, err := c.networksClient.Get(ctx, &pb.GetNetworkRequest{Network: vpc, Project: project})
+	network, err := c.networksClient.GetNetwork(ctx, &pb.GetNetworkRequest{Network: vpc, Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -138,18 +147,14 @@ func (c *gcpVpcPeeringClient) GetRemoteNetworkTags(ctx context.Context, remoteVp
 	var tagsArray []string
 
 	//NetworkPeering will only be created if the remote vpc has a tag with the kyma shoot name
-	remoteNetwork, err := c.networksClient.Get(ctx, &pb.GetNetworkRequest{Network: remoteVpc, Project: remoteProject})
+	remoteNetwork, err := c.networksClient.GetNetwork(ctx, &pb.GetNetworkRequest{Network: remoteVpc, Project: remoteProject})
 	if err != nil {
 		return nil, err
 	}
 
-	tagIterator := c.resourceManagerTagBindingsClient.ListEffectiveTags(ctx, &resourcemanagerpb.ListEffectiveTagsRequest{Parent: strings.Replace(ptr.Deref(remoteNetwork.SelfLinkWithId, ""), "https://www.googleapis.com/compute/v1", "//compute.googleapis.com", 1)})
-	for {
-		tag, err := tagIterator.Next()
+	tagIterator := c.resourceManagerClient.ListEffectiveTags(ctx, &resourcemanagerpb.ListEffectiveTagsRequest{Parent: strings.Replace(ptr.Deref(remoteNetwork.SelfLinkWithId, ""), "https://www.googleapis.com/compute/v1", "//compute.googleapis.com", 1)})
+	for tag, err := range tagIterator.All() {
 		if err != nil {
-			if errors.Is(err, iterator.Done) {
-				break
-			}
 			return nil, err
 		}
 		tagsArray = append(tagsArray, tag.NamespacedTagKey)
@@ -158,12 +163,8 @@ func (c *gcpVpcPeeringClient) GetRemoteNetworkTags(ctx context.Context, remoteVp
 }
 
 func (c *gcpVpcPeeringClient) GetPeeringOperation(ctx context.Context, project string, operationId string) (*pb.Operation, error) {
-	op, err := c.operationsClient.Get(ctx, &pb.GetGlobalOperationRequest{
+	return c.operationsClient.GetComputeGlobalOperation(ctx, &pb.GetGlobalOperationRequest{
 		Operation: operationId,
 		Project:   project,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return op, nil
 }

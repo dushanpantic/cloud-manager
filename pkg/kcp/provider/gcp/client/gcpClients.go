@@ -310,6 +310,21 @@ func (c *GcpClients) FilestoreWrapped() FilestoreClient {
 	return &filestoreClient{inner: c.Filestore}
 }
 
+// NetworkWrapped is supposed to replace usage of field ComputeNetworks after the refactoring
+func (c *VpcPeeringClients) NetworkWrapped() VpcNetworkClient {
+	return &vpcNetworkClient{inner: c.ComputeNetworks}
+}
+
+// GlobalOperationsWrapped is supposed to replace usage of field ComputeGlobalOperations after the refactoring
+func (c *VpcPeeringClients) GlobalOperationsWrapped() ComputeGlobalOperationsClient {
+	return &computeGlobalOperationsClient{inner: c.ComputeGlobalOperations}
+}
+
+// ResourceManagerWrapped is supposed to replace usage of field ResourceManagerTagBindings after the refactoring
+func (c *VpcPeeringClients) ResourceManagerWrapped() ResourceManagerClient {
+	return &resourceManagerClient{bindingsClient: c.ResourceManagerTagBindings}
+}
+
 func (c *VpcPeeringClients) Close() error {
 	return reflectingClose(c)
 }

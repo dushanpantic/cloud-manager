@@ -125,7 +125,7 @@ var _ = BeforeSuite(func() {
 		infra.KcpManager(),
 		infra.AwsMock().VpcPeeringSkrProvider(),
 		infra.AzureMock().VpcPeeringProvider(),
-		infra.GcpMock().VpcPeeringProvider(),
+		infra.GcpMock2().VpcPeeringProvider(),
 		env,
 	)).NotTo(HaveOccurred())
 	// RedisInstance

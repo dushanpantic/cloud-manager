@@ -12,6 +12,7 @@ import (
 	gcpredisinstanceclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/redisinstance/client"
 	gcpsubnetclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/subnet/client"
 	gcpvpcnetworkclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/vpcnetwork/client"
+	gcpvpcpeeringclient "github.com/kyma-project/cloud-manager/pkg/kcp/provider/gcp/vpcpeering/client"
 	"github.com/kyma-project/cloud-manager/pkg/util"
 )
 
@@ -96,6 +97,16 @@ func (s *server) NfsInstanceV2Provider() gcpclient.GcpClientProvider[gcpnfsinsta
 			return nil
 		}
 		return gcpnfsinstancev2client.NewFilestoreClientFromFilestoreClient(sub)
+	}
+}
+
+func (s *server) VpcPeeringProvider() gcpclient.GcpClientProvider[gcpvpcpeeringclient.VpcPeeringClient] {
+	return func(projectId string) gcpvpcpeeringclient.VpcPeeringClient {
+		sub := s.GetSubscription(projectId)
+		if sub == nil {
+			return nil
+		}
+		return gcpvpcpeeringclient.NewVpcPeeringClientFromWrapped(sub, sub, sub)
 	}
 }
 
